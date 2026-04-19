@@ -5,18 +5,11 @@ import { MessageSquare, X, Send } from 'lucide-react';
 const ChatbotUI = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState([
-    { sender: 'bot', text: 'Greetings Earthling! I have access to classified intelligence databases. Ask me anything.' }
+    { sender: 'bot', text: 'Greetings Earthling! Ask me anything.' }
   ]);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const messagesEndRef = useRef(null);
-
-  const suggestedQuestions = [
-    "What is the Nimitz encounter?",
-    "Where do sightings happen?",
-    "Show me classic UFO shapes",
-    "Explain Project Blue Book"
-  ];
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -27,36 +20,37 @@ const ChatbotUI = () => {
   }, [messages, isTyping]);
 
   useEffect(() => {
-    // Auto-engage user logic (opens oracle after 15 seconds)
     const engagementTimer = setTimeout(() => setIsOpen(true), 15000);
     return () => clearTimeout(engagementTimer);
   }, []);
 
-  const handleSend = (textInput = input) => {
+  const handleSend = async (textInput = input) => {
     if (!textInput.trim()) return;
     const currentInput = textInput.trim();
     setMessages(prev => [...prev, { sender: 'user', text: currentInput }]);
     setInput('');
     setIsTyping(true);
 
-    // Complex mock AI logic processing
-    let responseText = `I've analyzed your query about "\${currentInput}". Our records currently show insufficient structured data, but patterns suggest an atmospheric anomaly.`;
+    try {
+      const res = await fetch("https://dialogueflow-server.onrender.com/api/dialogflow", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: currentInput }),
+      });
+      const data = await res.json();
 
-    const lowerInput = currentInput.toLowerCase();
-    if (lowerInput.includes('nimitz')) {
-      responseText = "The Nimitz encounter occurred in 2004 when US Navy pilots observed a 'Tic-Tac' shaped object demonstrating flight capabilities impossible with current human technology, defying known physics without visible propulsion.";
-    } else if (lowerInput.includes('most') || lowerInput.includes('where') || lowerInput.includes('happen')) {
-      responseText = "Sightings are heavily concentrated near military installations, nuclear facilities, and large bodies of water. Some theories suggest a connection between UAPs and nuclear energy.";
-    } else if (lowerInput.includes('shape')) {
-      responseText = "Historically, 'Disk' and 'Cigar' were prominent. Since the 1990s, 'Black Triangles' have surged in reporting volume, often described as silent, massive crafts.";
-    } else if (lowerInput.includes('project blue book') || lowerInput.includes('blue book')) {
-      responseText = "Project Blue Book was a systematic study of unidentified flying objects conducted by the United States Air Force from March 1952 to December 1969. It concluded, officially, that UFOs posed no national security threat.";
-    }
-
-    setTimeout(() => {
-      setMessages(prev => [...prev, { sender: 'bot', text: responseText }]);
+      // Backend returns { reply, suggestions, links }
+      setMessages(prev => [...prev, { 
+        sender: 'bot', 
+        text: data.reply, 
+        suggestions: data.suggestions || [], 
+        links: data.links || [] 
+      }]);
+    } catch (err) {
+      setMessages(prev => [...prev, { sender: 'bot', text: "Error contacting Dialogflow." }]);
+    } finally {
       setIsTyping(false);
-    }, 1500 + Math.random() * 1500);
+    }
   };
 
   return (
@@ -91,14 +85,69 @@ const ChatbotUI = () => {
 
             <div className="flex-1 p-4 overflow-y-auto flex flex-col gap-3 bg-[radial-gradient(ellipse_at_top_right,_rgba(30,41,59,0.5)_0%,_#000000_100%)] h-[350px]">
               {messages.map((msg, idx) => (
-                <motion.div
-                  initial={{ opacity: 0, x: msg.sender === 'user' ? 20 : -20 }}
-                  animate={{ opacity: 1, x: 0 }}
-                  key={idx}
-                  className={`max-w-[85%] rounded-lg p-3 text-sm leading-relaxed \${msg.sender === 'user' ? 'bg-neon-blue/20 text-blue-50 self-end rounded-tr-none border border-neon-blue/30 shadow-sm' : 'bg-white/10 text-gray-200 self-start rounded-tl-none border border-white/10 shadow-[inset_0_2px_10px_rgba(255,255,255,0.05)]'}`}
-                >
-                  {msg.text}
-                </motion.div>
+                <div key={idx} className="flex flex-col gap-1">
+                  <motion.div
+  initial={{ opacity: 0, x: msg.sender === 'user' ? 20 : -20 }}
+  animate={{ opacity: 1, x: 0 }}
+  className={`max-w-[85%] rounded-lg p-3 text-sm leading-relaxed ${
+    msg.sender === 'user'
+      ? 'bg-neon-blue/20 text-blue-50 self-end rounded-tr-none border border-neon-blue/30 shadow-sm'
+      : 'bg-black/40 text-gray-200 self-start rounded-tl-none border border-neon-blue/30 shadow-md'
+  }`}
+>
+  {msg.sender === 'bot' && msg.text.includes("\n") ? (
+    <div className="space-y-1">
+      {msg.text.split("\n").map((line, i) =>
+        line.trim() ? (
+          <p key={i} className={i === 0 ? "font-semibold text-neon-blue mb-2" : ""}>
+            {line}
+          </p>
+        ) : null
+      )}
+    </div>
+  ) : (
+    <p>{msg.text}</p>
+  )}
+</motion.div>
+
+
+                  {/* Chips BELOW bot reply */}
+                  {msg.sender === 'bot' && msg.suggestions && msg.suggestions.length > 0 && (
+                    <div className="flex gap-2 flex-wrap self-start mt-1">
+                      {msg.suggestions.map((s, i) => (
+                        <button
+                          key={i}
+                          onClick={() => handleSend(s)}
+                          className="px-2 py-1 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-xs text-gray-300 cursor-pointer"
+                        >
+                          {s}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+{/* ✅ Link-out suggestions */}
+{msg.sender === 'bot' && msg.links && msg.links.length > 0 && (
+  <div className="flex flex-col gap-2 self-start mt-3">
+    {msg.links.map((link, i) => (
+      <a
+        key={i}
+        href={link.url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="flex items-center gap-2 px-3 py-2 rounded-md bg-gradient-to-r from-neon-green to-neon-blue text-black text-sm font-medium shadow hover:opacity-90 transition"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" 
+             className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} 
+                d="M10 14L21 3m0 0v7m0-7h-7" />
+        </svg>
+        {link.name}
+      </a>
+    ))}
+  </div>
+)}
+
+                </div>
               ))}
 
               {isTyping && (
@@ -112,19 +161,6 @@ const ChatbotUI = () => {
                 </motion.div>
               )}
               <div ref={messagesEndRef} className="shrink-0" />
-            </div>
-
-            {/* Suggested Questions Ribbon */}
-            <div className="px-3 py-2 flex gap-2 overflow-x-auto border-t border-white/5 shrink-0 bg-black/40 hide-scroll">
-              {suggestedQuestions.map((q, i) => (
-                <button
-                  key={i}
-                  onClick={() => handleSend(q)}
-                  className="whitespace-nowrap px-3 py-1.5 rounded-full bg-white/5 hover:bg-white/10 border border-white/10 text-[11px] font-medium text-gray-300 transition-colors cursor-pointer"
-                >
-                  {q}
-                </button>
-              ))}
             </div>
 
             <div className="p-3 border-t border-white/10 bg-space-dark/95 flex items-center gap-2 shrink-0">
